@@ -1,0 +1,8 @@
+#telegram
+BOT_TOKEN=
+
+DB_DRIVER=ODBC Driver 17 for SQL Server
+DB_SERVER=192.xxx.xx.xx
+DB_DATABASE=xx
+DB_USER=xx
+DB_PASSWORD=xxxxx
