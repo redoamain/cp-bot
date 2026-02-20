@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 from io import BytesIO
 from datetime import datetime
@@ -67,12 +67,6 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # ================= HEADER TETAP =================
         header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-        thick_border = Border(
-            top=Side(style='thick'),
-            bottom=Side(style='thick'),
-            left=Side(style='thin'),
-            right=Side(style='thin')
-        )
 
         # Row 1 - Judul
         ws.merge_cells("A1:K1")
@@ -80,19 +74,15 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws["A1"].font = Font(size=16, bold=True)
         ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
         for col in range(1, 12):
-            cell = ws.cell(row=1, column=col)
-            cell.fill = header_fill
-            cell.border = thick_border
+            ws.cell(row=1, column=col).fill = header_fill
 
         # Row 2 - Nama Perusahaan
         ws.merge_cells("A2:K2")
         ws["A2"] = "PT CITI PLUMB"
         ws["A2"].font = Font(size=13, bold=True)
         ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
-        for col in range(1, 12):
-            ws.cell(row=2, column=col).border = Border(bottom=Side(style='thin'))
 
-        # Row 3 - Spasi
+        # Row 3 - Spasi (tetap dipertahankan, tidak akan masuk area filter data)
         ws.merge_cells("A3:K3")
 
         # Row 4 - Periode
@@ -100,8 +90,6 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws["A4"] = f"Periode : {tgl1} s/d {tgl2}"
         ws["A4"].font = Font(size=11, italic=True)
         ws["A4"].alignment = Alignment(horizontal="center")
-        for col in range(1, 12):
-            ws.cell(row=4, column=col).border = Border(bottom=Side(style='thin'))
 
         # ================= HEADER TABEL =================
         start_row = 7
@@ -135,13 +123,6 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cell.alignment = Alignment(horizontal="center")
 
         # ================= UTILITY =================
-        thin_border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
-        )
-
         def safe_num(val):
             try:
                 return float(val)
@@ -149,7 +130,6 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return 0.0
 
         # ================= MULAI MENULIS DATA =================
-        row_pos = start_row + 2        # baris pertama data
         grand_debet = grand_debetrp = grand_credit = grand_creditrp = 0
 
         current_acc = None
@@ -164,34 +144,18 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if current_acc != acc:
                 # Sebelum pindah, tulis total akun sebelumnya (jika ada)
                 if current_acc is not None:
-                    # Total per akun
-                    ws.append([''] * 11)
+                    # Total per akun (tanpa baris kosong)
                     ws.append([
                         "", "", "TOTAL ACCOUNT", "", "",
                         "", total_debetrp, "", total_creditrp, "", ""
                     ])
-                    total_row = ws.max_row
+                    # Set bold untuk baris total
                     for col in range(1, 12):
-                        cell = ws.cell(row=total_row, column=col)
-                        cell.font = Font(bold=True)
-                        cell.border = Border(
-                            top=Side(style='thick'),
-                            bottom=Side(style='thin'),
-                            left=Side(style='thin'),
-                            right=Side(style='thin')
-                        )
-                    row_pos = ws.max_row + 1
-                    # Spasi antar akun
-                    ws.append([''] * 11)
-                    row_pos += 1
+                        ws.cell(row=ws.max_row, column=col).font = Font(bold=True)
 
                 # Header akun baru
-                ws[f"A{row_pos}"] = f"ACCOUNT : {acc} - {accname}"
-                ws[f"A{row_pos}"].font = Font(bold=True)
-                row_pos += 1
-                # Baris kosong antara header dan data
-                ws.append([''] * 11)
-                row_pos += 1
+                ws.append([f"ACCOUNT : {acc} - {accname}", "", "", "", "", "", "", "", "", "", ""])
+                ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
 
                 # Reset total per akun
                 total_debet = total_debetrp = total_credit = total_creditrp = 0
@@ -242,31 +206,15 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 0,
                 saldo
             ])
-            # Beri border tipis
-            for col in range(1, 12):
-                ws.cell(row=row_pos, column=col).border = thin_border
-            row_pos += 1
 
         # ===== Total akun terakhir =====
         if current_acc is not None:
-            ws.append([''] * 11)
             ws.append([
                 "", "", "TOTAL ACCOUNT", "", "",
                 "", total_debetrp, "", total_creditrp, "", ""
             ])
-            total_row = ws.max_row
             for col in range(1, 12):
-                cell = ws.cell(row=total_row, column=col)
-                cell.font = Font(bold=True)
-                cell.border = Border(
-                    top=Side(style='thick'),
-                    bottom=Side(style='thin'),
-                    left=Side(style='thin'),
-                    right=Side(style='thin')
-                )
-            row_pos = ws.max_row + 1
-            ws.append([''] * 11)  # spasi sebelum grand total
-            row_pos += 1
+                ws.cell(row=ws.max_row, column=col).font = Font(bold=True)
 
         # ===== GRAND TOTAL SEMUA AKUN =====
         ws.append([
@@ -280,14 +228,7 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
         grand_row = ws.max_row
         for col in range(1, 12):
-            cell = ws.cell(row=grand_row, column=col)
-            cell.font = Font(size=12, bold=True)
-            cell.border = Border(
-                top=Side(style='thick'),
-                bottom=Side(style='thick'),
-                left=Side(style='thin'),
-                right=Side(style='thin')
-            )
+            ws.cell(row=grand_row, column=col).font = Font(size=12, bold=True)
 
         # ===== AUTO WIDTH =====
         for col in range(1, ws.max_column + 1):
