@@ -11,12 +11,20 @@ from app.utils.helpers import fmt_date
 async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # ================= VALIDASI FORMAT =================
-        if len(context.args) != 2:
+        # Format baru: /bukubesar TGL1 TGL2 [ACC1 ACC2]
+        # Contoh: 
+        #   /bukubesar 2025-12-16 2025-12-31
+        #   /bukubesar 2025-12-16 2025-12-31 5002.01 5002.09
+        #   /bukubesar 2025-12-16 2025-12-31 1101 7301
+        
+        if len(context.args) < 2:
             await update.message.reply_text(
                 "Format:\n"
-                "/bukubesar TGL1 TGL2\n\n"
+                "/bukubesar TGL1 TGL2 [ACC1 ACC2]\n\n"
                 "Contoh:\n"
-                "/bukubesar 2025-12-16 2025-12-31"
+                "/bukubesar 2025-12-16 2025-12-31\n"
+                "/bukubesar 2025-12-16 2025-12-31 5002.01 5002.09\n"
+                "/bukubesar 2025-12-16 2025-12-31 1101 7301"
             )
             return
 
@@ -28,10 +36,21 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Format tanggal harus YYYY-MM-DD")
             return
 
-        acc1 = "1101"
-        acc2 = "7301"
+        # ================= PARSE AKUN (opsional) =================
+        if len(context.args) >= 4:
+            acc1 = context.args[2]
+            acc2 = context.args[3]
+            # Validasi format akun (bisa angka dengan atau tanpa titik)
+            import re
+            if not re.match(r'^\d+(\.\d+)?$', acc1) or not re.match(r'^\d+(\.\d+)?$', acc2):
+                await update.message.reply_text("Format akun harus angka (contoh: 5002.01 atau 1101)")
+                return
+        else:
+            # Default akun
+            acc1 = "1101"
+            acc2 = "7301"
 
-        loading_msg = await update.message.reply_text("⏳ Sedang generate laporan Buku Besar...")
+        loading_msg = await update.message.reply_text(f"⏳ Sedang generate laporan Buku Besar untuk akun {acc1} s/d {acc2}...")
 
         cursor = get_cursor()
 
@@ -57,7 +76,7 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         rows = cursor.fetchall()
         if not rows:
-            await update.message.reply_text("Tidak ada data Buku Besar")
+            await update.message.reply_text(f"Tidak ada data Buku Besar untuk akun {acc1} s/d {acc2}")
             return
 
         # ================= BUAT WORKBOOK =================
@@ -82,17 +101,21 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws["A2"].font = Font(size=13, bold=True)
         ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
 
-        # Row 3 - Spasi (tetap dipertahankan, tidak akan masuk area filter data)
+        # Row 3 - Periode (langsung setelah nama perusahaan, tanpa spasi)
         ws.merge_cells("A3:K3")
-
-        # Row 4 - Periode
+        ws["A3"] = f"Periode : {tgl1} s/d {tgl2}"
+        ws["A3"].font = Font(size=11, italic=True)
+        ws["A3"].alignment = Alignment(horizontal="center")
+        
+        # Row 4 - Rentang Akun (tanpa spasi)
         ws.merge_cells("A4:K4")
-        ws["A4"] = f"Periode : {tgl1} s/d {tgl2}"
+        ws["A4"] = f"Rentang Akun : {acc1} s/d {acc2}"
         ws["A4"].font = Font(size=11, italic=True)
         ws["A4"].alignment = Alignment(horizontal="center")
 
         # ================= HEADER TABEL =================
-        start_row = 7
+        # Langsung mulai dari row 5 (tanpa row kosong)
+        start_row = 5
         ws.merge_cells(f"A{start_row}:A{start_row+1}")
         ws.merge_cells(f"B{start_row}:B{start_row+1}")
         ws.merge_cells(f"C{start_row}:C{start_row+1}")
@@ -121,6 +144,8 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for cell in row:
                 cell.font = Font(bold=True)
                 cell.alignment = Alignment(horizontal="center")
+                # Tambahkan border dan fill untuk header tabel
+                cell.fill = header_fill
 
         # ================= UTILITY =================
         def safe_num(val):
@@ -136,6 +161,9 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total_debet = total_debetrp = total_credit = total_creditrp = 0
         saldo = 0
 
+        # Data dimulai dari row setelah header (row 7)
+        current_row = start_row + 2
+
         for i, r in enumerate(rows):
             acc = r[2]
             accname = r[3]
@@ -144,7 +172,7 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if current_acc != acc:
                 # Sebelum pindah, tulis total akun sebelumnya (jika ada)
                 if current_acc is not None:
-                    # Total per akun (tanpa baris kosong)
+                    # Total per akun
                     ws.append([
                         "", "", "TOTAL ACCOUNT", "", "",
                         "", total_debetrp, "", total_creditrp, "", ""
@@ -239,6 +267,9 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if cell.value:
                     max_len = max(max_len, len(str(cell.value)))
             ws.column_dimensions[col_letter].width = max_len + 2
+
+        # ===== FREEZE PANES agar header tetap terlihat saat scroll =====
+        ws.freeze_panes = ws.cell(row=start_row + 2, column=1)
 
         # ===== KIRIM FILE =====
         file_stream = BytesIO()
