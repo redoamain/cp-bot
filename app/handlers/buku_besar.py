@@ -11,12 +11,6 @@ from app.utils.helpers import fmt_date
 async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # ================= VALIDASI FORMAT =================
-        # Format baru: /bukubesar TGL1 TGL2 [ACC1 ACC2]
-        # Contoh: 
-        #   /bukubesar 2025-12-16 2025-12-31
-        #   /bukubesar 2025-12-16 2025-12-31 5002.01 5002.09
-        #   /bukubesar 2025-12-16 2025-12-31 1101 7301
-        
         if len(context.args) < 2:
             await update.message.reply_text(
                 "Format:\n"
@@ -40,13 +34,11 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(context.args) >= 4:
             acc1 = context.args[2]
             acc2 = context.args[3]
-            # Validasi format akun (bisa angka dengan atau tanpa titik)
             import re
             if not re.match(r'^\d+(\.\d+)?$', acc1) or not re.match(r'^\d+(\.\d+)?$', acc2):
                 await update.message.reply_text("Format akun harus angka (contoh: 5002.01 atau 1101)")
                 return
         else:
-            # Default akun
             acc1 = "1101"
             acc2 = "7301"
 
@@ -67,7 +59,6 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 @lawantransksi = 1
         """, (tgl1, tgl2, acc1, acc2))
 
-        # Lewati semua result set sampai mendapatkan dataset utama
         while True:
             if cursor.description:
                 break
@@ -101,20 +92,19 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws["A2"].font = Font(size=13, bold=True)
         ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
 
-        # Row 3 - Periode (langsung setelah nama perusahaan, tanpa spasi)
+        # Row 3 - Periode
         ws.merge_cells("A3:K3")
         ws["A3"] = f"Periode : {tgl1} s/d {tgl2}"
         ws["A3"].font = Font(size=11, italic=True)
         ws["A3"].alignment = Alignment(horizontal="center")
         
-        # Row 4 - Rentang Akun (tanpa spasi)
+        # Row 4 - Rentang Akun
         ws.merge_cells("A4:K4")
         ws["A4"] = f"Rentang Akun : {acc1} s/d {acc2}"
         ws["A4"].font = Font(size=11, italic=True)
         ws["A4"].alignment = Alignment(horizontal="center")
 
         # ================= HEADER TABEL =================
-        # Langsung mulai dari row 5 (tanpa row kosong)
         start_row = 5
         ws.merge_cells(f"A{start_row}:A{start_row+1}")
         ws.merge_cells(f"B{start_row}:B{start_row+1}")
@@ -144,7 +134,6 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for cell in row:
                 cell.font = Font(bold=True)
                 cell.alignment = Alignment(horizontal="center")
-                # Tambahkan border dan fill untuk header tabel
                 cell.fill = header_fill
 
         # ================= UTILITY =================
@@ -161,9 +150,6 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total_debet = total_debetrp = total_credit = total_creditrp = 0
         saldo = 0
 
-        # Data dimulai dari row setelah header (row 7)
-        current_row = start_row + 2
-
         for i, r in enumerate(rows):
             acc = r[2]
             accname = r[3]
@@ -172,12 +158,10 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if current_acc != acc:
                 # Sebelum pindah, tulis total akun sebelumnya (jika ada)
                 if current_acc is not None:
-                    # Total per akun
                     ws.append([
                         "", "", "TOTAL ACCOUNT", "", "",
                         "", total_debetrp, "", total_creditrp, "", ""
                     ])
-                    # Set bold untuk baris total
                     for col in range(1, 12):
                         ws.cell(row=ws.max_row, column=col).font = Font(bold=True)
 
@@ -258,17 +242,20 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for col in range(1, 12):
             ws.cell(row=grand_row, column=col).font = Font(size=12, bold=True)
 
-        # ===== AUTO WIDTH =====
-        for col in range(1, ws.max_column + 1):
-            max_len = 0
-            col_letter = get_column_letter(col)
-            for row in range(1, ws.max_row + 1):
+        # ===== FORMAT NOMINAL =====
+        for row in range(start_row + 2, ws.max_row + 1):
+            for col in [7, 9, 11]:  # Kolom Total(Rp) Debet, Total(Rp) Credit, Saldo(Rp)
                 cell = ws.cell(row=row, column=col)
-                if cell.value:
-                    max_len = max(max_len, len(str(cell.value)))
-            ws.column_dimensions[col_letter].width = max_len + 2
+                if isinstance(cell.value, (int, float)):
+                    cell.number_format = '#,##0'
+                    cell.alignment = Alignment(horizontal="right")
 
-        # ===== FREEZE PANES agar header tetap terlihat saat scroll =====
+        # ===== LEBAR KOLOM (tanpa auto fit) =====
+        # Set lebar default untuk semua kolom
+        for col in range(1, 12):
+            ws.column_dimensions[get_column_letter(col)].width = 15
+
+        # ===== FREEZE PANES =====
         ws.freeze_panes = ws.cell(row=start_row + 2, column=1)
 
         # ===== KIRIM FILE =====
