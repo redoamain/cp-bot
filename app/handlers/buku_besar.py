@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.styles import Font, Alignment, PatternFill, numbers
 from openpyxl.utils import get_column_letter
 from io import BytesIO
 from datetime import datetime
@@ -242,12 +242,16 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for col in range(1, 12):
             ws.cell(row=grand_row, column=col).font = Font(size=12, bold=True)
 
-        # ===== FORMAT NOMINAL =====
+        # ===== FORMAT NOMINAL ACCOUNTING =====
+        # Format accounting: #,##0.00; (#,##0.00); - 
+        # Ini akan menampilkan angka negatif dalam tanda kurung
+        accounting_format = '#,##0.00_); (#,##0.00); -_); @_);'
+        
         for row in range(start_row + 2, ws.max_row + 1):
-            for col in [7, 9, 11]:  # Kolom Total(Rp) Debet, Total(Rp) Credit, Saldo(Rp)
+            for col in [7, 9, 11]:  # Kolom Total(Rp) Debet (G), Total(Rp) Credit (I), Saldo(Rp) (K)
                 cell = ws.cell(row=row, column=col)
                 if isinstance(cell.value, (int, float)):
-                    cell.number_format = '#,##0'
+                    cell.number_format = accounting_format
                     cell.alignment = Alignment(horizontal="right")
 
         # ===== LEBAR KOLOM (tanpa auto fit) =====
