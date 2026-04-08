@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill, numbers
+from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 from io import BytesIO
 from datetime import datetime
@@ -242,13 +242,14 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for col in range(1, 12):
             ws.cell(row=grand_row, column=col).font = Font(size=12, bold=True)
 
-        # ===== FORMAT NOMINAL ACCOUNTING =====
-        # Format accounting: #,##0.00; (#,##0.00); - 
-        # Ini akan menampilkan angka negatif dalam tanda kurung
-        accounting_format = '#,##0.00_); (#,##0.00); -_); @_);'
+        # ===== FORMAT NOMINAL ACCOUNTING (dengan tanda kurung untuk minus) =====
+        # Format accounting yang benar untuk Excel
+        # _(* #,##0.00_);_(* (#,##0.00);_(* "-"??_);_(@_)
+        # Atau format yang lebih sederhana:
+        accounting_format = '#,##0.00_);[Red](#,##0.00);-'
         
         for row in range(start_row + 2, ws.max_row + 1):
-            for col in [7, 9, 11]:  # Kolom Total(Rp) Debet (G), Total(Rp) Credit (I), Saldo(Rp) (K)
+            for col in [7, 9, 11]:  # Kolom G (Total Rp Debet), I (Total Rp Credit), K (Saldo Rp)
                 cell = ws.cell(row=row, column=col)
                 if isinstance(cell.value, (int, float)):
                     cell.number_format = accounting_format
@@ -258,6 +259,11 @@ async def buku_besar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Set lebar default untuk semua kolom
         for col in range(1, 12):
             ws.column_dimensions[get_column_letter(col)].width = 15
+        
+        # Lebar khusus untuk kolom nominal agar cukup untuk format accounting
+        ws.column_dimensions['G'].width = 18
+        ws.column_dimensions['I'].width = 18
+        ws.column_dimensions['K'].width = 18
 
         # ===== FREEZE PANES =====
         ws.freeze_panes = ws.cell(row=start_row + 2, column=1)
